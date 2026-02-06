@@ -6,6 +6,13 @@ Garland::Garland(int pinA, int pinB)
 }
 
 void Garland::begin() {
+    // 0. Завантаження налаштувань
+    _prefs.begin("garland", false);
+    _mode = _prefs.getInt("mode", MODE_ALTERNATING);
+    _speed = _prefs.getInt("speed", 50);
+    _manualBrightness = _prefs.getInt("bright", 255);
+    _maxBrightness = _manualBrightness;
+
     // 1. Налаштовуємо таймер (5 кГц, 8 біт)
     ledc_timer_config_t ledc_timer = {
         .speed_mode       = LEDC_LOW_SPEED_MODE,
@@ -16,11 +23,16 @@ void Garland::begin() {
     };
     ledc_timer_config(&ledc_timer);
 
-    // Початкове налаштування каналів (за замовчуванням протифаза)
+    // Початкове налаштування каналів відповідно до завантаженого режиму
     if (_mode == MODE_ALTERNATING) {
         _setupChannels(0, 128);
     } else {
         _setupChannels(0, 0);
+    }
+    
+    // Якщо завантажили режим постійного світіння, треба відновити яскравість
+    if (_mode == MODE_STEADY_ON) {
+        _updateDuty(_manualBrightness);
     }
 }
 
@@ -53,11 +65,13 @@ void Garland::_setupChannels(uint32_t hpoint0, uint32_t hpoint1) {
 void Garland::setMode(int mode) {
     if (_mode == mode) return;
 
-    // Якщо перемикаємось на/з режиму ALTERNATING, треба переналаштувати hpoint
-    bool wasAlternating = (_mode == MODE_ALTERNATING);
+    // Режим дійсно змінився
+    
+    // Якщо перемикаємось на/з режиму ALTERNATING, переналаштовуємо канали
+    // Всі режими крім ALTERNATING повинні бути синхронні (0,0)
     bool isAlternating = (mode == MODE_ALTERNATING);
-
     _mode = mode;
+    _prefs.putInt("mode", _mode); // Зберігаємо режим
 
     if (wasAlternating != isAlternating) {
         if (isAlternating) {
@@ -65,17 +79,21 @@ void Garland::setMode(int mode) {
         } else {
             _setupChannels(0, 0);   // Синхронно
         }
+        // Невелика затримка після переналаштування каналів
+        delay(5);
     }
 
     // Скидання стану анімації
     if (_mode == MODE_OFF) {
         _updateDuty(0);
     } else if (_mode == MODE_STEADY_ON) {
-        _updateDuty(_manualBrightness);
+        // Оновлюємо відразу, посилаючись на _maxBrightness (яке = _manualBrightness)
+        _updateDuty(_maxBrightness); 
     } else {
-        // Для анімацій починаємо з 0
+        // Для анімацій
         _currentBrightness = 0;
         _fadeAmount = 1; 
+        _lastUpdate = millis(); // Скидаємо таймер
         _updateDuty(0);
     }
 }
@@ -86,6 +104,7 @@ int Garland::getMode() const {
 
 void Garland::setSpeed(int speed) {
     _speed = constrain(speed, 1, 100);
+    _prefs.putInt("speed", _speed); // Зберігаємо швидкість
 }
 
 int Garland::getSpeed() const {
@@ -94,6 +113,11 @@ int Garland::getSpeed() const {
 
 void Garland::setBrightness(int brightness) {
     _manualBrightness = constrain(brightness, 0, 255);
+    _prefs.putInt("bright", _manualBrightness); // Зберігаємо яскравість
+    
+    // Важливо: обмежуємо максимальну яскравість для анімацій
+    _maxBrightness = _manualBrightness; 
+    
     if (_mode == MODE_STEADY_ON) {
         _updateDuty(_manualBrightness);
     }
@@ -104,6 +128,9 @@ int Garland::getBrightness() const {
 }
 
 void Garland::_updateDuty(int val) {
+    // Безпечне обмеження
+    val = constrain(val, 0, 255);
+    
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, val);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
 
@@ -119,9 +146,7 @@ void Garland::tick() {
     
     // Специфічні налаштування для нових режимів
     if (_mode == MODE_FLICKER) {
-        delayMs = random(10, 50); // Випадкова швидкість для мерехтіння
-    } else if (_mode == MODE_CHAOS) {
-        // У Хаосі швидкість може змінюватись динамічно, але поки використовуємо базову
+        delayMs = random(20, 80); // Мерехтіння має свій темп
     }
 
     if (millis() - _lastUpdate > delayMs) {
@@ -129,31 +154,46 @@ void Garland::tick() {
         
         if (_mode == MODE_ALTERNATING || _mode == MODE_BREATHING_SYNC) {
             _currentBrightness += _fadeAmount;
-            if (_currentBrightness <= 0 || _currentBrightness >= _maxBrightness) {
-                _fadeAmount = -_fadeAmount;
-                if (_currentBrightness < 0) _currentBrightness = 0;
-                if (_currentBrightness > _maxBrightness) _currentBrightness = _maxBrightness;
+            
+            // Логіка відбивання від країв
+            if (_currentBrightness >= _maxBrightness) {
+                _currentBrightness = _maxBrightness; // Clamp
+                _fadeAmount = -_fadeAmount;          // Reverse
+            } else if (_currentBrightness <= 0) {
+                _currentBrightness = 0;              // Clamp
+                _fadeAmount = -_fadeAmount;          // Reverse
             }
+            
             _updateDuty(_currentBrightness);
             
         } else if (_mode == MODE_FLICKER) {
-             // Імітація свічки: база + випадкове відхилення
-             int flickerBase = 150; 
-             int flickerVar = random(0, 105);
-             _currentBrightness = flickerBase + flickerVar;
-             _updateDuty(_currentBrightness);
+             // Імітація свічки: База (70%) + Шум (30%)
+             // Масштабуємо відносно _maxBrightness
+             if (_maxBrightness > 0) {
+                 int flickerBase = (_maxBrightness * 7) / 10; 
+                 int flickerRange = _maxBrightness - flickerBase;
+                 _currentBrightness = flickerBase + random(0, flickerRange + 1);
+                 _updateDuty(_currentBrightness);
+             } else {
+                 _updateDuty(0);
+             }
              
         } else if (_mode == MODE_CHAOS) {
-            // Плавний перехід до випадкової цілі
-            static int targetChaos = 128;
+            // Плавне блукання
+            static int targetChaos = 0;
             
-            if (_currentBrightness < targetChaos) _currentBrightness += random(1, 5);
-            else if (_currentBrightness > targetChaos) _currentBrightness -= random(1, 5);
-            
-            // Якщо досягли цілі (або близько), обираємо нову
+            // Якщо досягли цілі, обираємо нову в межах дозволеного
             if (abs(_currentBrightness - targetChaos) < 5) {
-                targetChaos = random(10, _maxBrightness);
+                targetChaos = random(0, _maxBrightness + 1);
             }
+            
+            // Рухаємось до цілі
+            if (_currentBrightness < targetChaos) _currentBrightness += random(1, 4);
+            else if (_currentBrightness > targetChaos) _currentBrightness -= random(1, 4);
+            
+            // Ліміти
+            _currentBrightness = constrain(_currentBrightness, 0, _maxBrightness);
+            
             _updateDuty(_currentBrightness);
         }
     }

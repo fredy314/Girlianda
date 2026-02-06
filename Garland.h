@@ -2,6 +2,7 @@
 #define GARLAND_H
 
 #include <Arduino.h>
+#include <Preferences.h>
 #include "driver/ledc.h"
 
 class Garland {
@@ -40,6 +41,8 @@ private:
     int _fadeAmount;
     unsigned long _lastUpdate;
     int _maxBrightness; // Ліміт яскравості (безпека)
+    
+    Preferences _prefs; // Об'єкт для збереження налаштувань
 
     // Внутрішні методи
     void _setupChannels(uint32_t hpoint0, uint32_t hpoint1);
