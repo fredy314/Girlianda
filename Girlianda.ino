@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include "esp_wifi.h"
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include "Garland.h"
@@ -6,6 +7,7 @@
 
 // --- Configuration ---
 const char* ssid = "HomeF";
+const char* ssidExt = "HomeF_EXT";
 const char* password = "21122112";
 /*
 // Static IP settings
@@ -20,9 +22,54 @@ const int pinA = 10;
 const int pinB = 7;
 
 // Globals
+// Globals
 Garland garland(pinA, pinB);
 AsyncWebServer server(80);
 PagesHandlers pages(garland);
+unsigned long wifiConnectStart = 0;
+int wifiConnectStage = 0; // 0: Stopped, 1: Primary, 2: Secondary, 3: Scanning
+int wifiPowerIndex = 0; // 0..3
+bool isScanning = false;
+
+wifi_power_t powerSteps[] = {
+  WIFI_POWER_8_5dBm,  // Мінімальна (найбезпечніша для USB)
+  WIFI_POWER_11dBm,   // Трохи сильніша
+  WIFI_POWER_13dBm,   // Середня
+  WIFI_POWER_15dBm    // Максимальна "безпечна" для вашої збірки
+};
+
+// Non-blocking connection initiator
+void startWiFiConnection(const char* targetSsid, const char* password, wifi_power_t power) {
+  Serial.print("Connecting to: ");
+  Serial.print(targetSsid);
+  Serial.print(" [Power Index: ");
+  Serial.print(wifiPowerIndex);
+  Serial.println("]");
+
+  // Stop scan if running (clean up)
+  if (isScanning) {
+    WiFi.scanDelete();
+    isScanning = false;
+  }
+
+  // 1. Повністю скидаємо WiFi стек
+  WiFi.disconnect(true);  // Disconnect and turn OFF radio
+  delay(500);             // Give it a moment to shut down
+  
+  WiFi.mode(WIFI_STA);    // Turn ON radio in STA mode
+  delay(100);
+  
+  // 2. Застосовуємо наші "пробивні" налаштування
+  WiFi.setSleep(false);
+  WiFi.setTxPower(power);
+  // sp_wifi_set_protocol removed to allow auto-negotiation
+
+  // 3. Запускаємо підключення
+  WiFi.begin(targetSsid, password);
+  
+  // Reset timer
+  wifiConnectStart = millis();
+}
 
 void setup() {
   // 0. Init Serial with retry
@@ -31,71 +78,17 @@ void setup() {
   Serial.println("\n\n--- Starting Girlianda Debug Mode ---");
 
   // 1. Setup Garland Logic
-  // 1. Setup Garland Logic
   garland.begin();
-  
-  // Store saved settings
-  int storedMode = garland.getMode();
-  int storedBrightness = garland.getBrightness();
-  
-  // Visual Feedback: Fast flash = Booting (do not save these changes)
-  garland.setBrightness(255, false);
-  garland.setMode(Garland::MODE_STEADY_ON, false);
-  delay(200); 
-  garland.setMode(Garland::MODE_OFF, false);
-  delay(200);
-  
-  // Restore settings (do not save, as they are already saved)
-  garland.setBrightness(storedBrightness, false);
-  garland.setMode(storedMode, false);
-  
-  // 2. Setup WiFi with Timeout and AP Fallback
-  // Try static config first
-  /*if (!WiFi.config(staticIP, gateway, subnet, primaryDNS)) {
-    Serial.println("Static IP Config Failed!");
-  }*/
-  
-  WiFi.begin(ssid, password);
-  Serial.print("Connecting to WiFi");
-  
-  unsigned long startAttempt = millis();
-  bool connected = false;
-
-  // Try connecting for 15 seconds
-  while (millis() - startAttempt < 15000) {
-    if (WiFi.status() == WL_CONNECTED) {
-      connected = true;
-      break;
-    }
     
-    // Critical: Keep animation running!
-    garland.tick(); 
-    
-    // Serial feedback every 500ms
-    static unsigned long lastPrint = 0;
-    if (millis() - lastPrint > 500) {
-      lastPrint = millis();
-      Serial.print(".");
-    }
-    delay(10); 
-  }
-
-  Serial.println();
+  // 2. Setup WiFi - Start with Async Scan
+  WiFi.mode(WIFI_STA);
+  WiFi.disconnect();
+  delay(100);
   
-  if (connected) {
-    Serial.println("WiFi Connected!");
-    Serial.print("Station IP: ");
-    Serial.println(WiFi.localIP());
-  } else {
-    Serial.println("WiFi Connection Failed! Starting Access Point.");
-    WiFi.disconnect();
-    WiFi.mode(WIFI_AP);
-    WiFi.softAP("Girlianda-AP", "12345678"); // Pass: 12345678
-    Serial.print("AP IP: ");
-    Serial.println(WiFi.softAPIP());
-  }
-  WiFi.setSleep(false);
-  
+  Serial.println("Starting background WiFi scan...");
+  WiFi.scanNetworks(true); // Async scan
+  isScanning = true;
+  wifiConnectStage = 3; // Scanning state
 
   // 3. Setup Web Server
   pages.initPagesHandlers(server);
@@ -109,13 +102,6 @@ void handleSerial() {
     input.trim();
     if (input.length() == 0) return;
 
-    // Commands:
-    // m=0..5 (Mode)
-    // s=0..100 (Speed)
-    // b=0..255 (Brightness)
-    // wifi (Print WiFi Status)
-    // ap (Force AP Mode)
-    
     if (input.startsWith("m=")) {
       int val = input.substring(2).toInt();
       garland.setMode(val);
@@ -129,17 +115,45 @@ void handleSerial() {
       garland.setBrightness(val);
       Serial.print("Brightness set to: "); Serial.println(val);
     } else if (input == "wifi") {
-      Serial.print("WiFi Mode: "); Serial.println(WiFi.getMode());
-      Serial.print("STA IP: "); Serial.println(WiFi.localIP());
-      Serial.print("AP IP: "); Serial.println(WiFi.softAPIP());
+      Serial.println("Restarting WiFi scan & connect...");
+      WiFi.scanDelete();
+      WiFi.disconnect();
+      WiFi.scanNetworks(true);
+      isScanning = true;
+      wifiConnectStage = 3;
+      
     } else if (input == "ap") {
       Serial.println("Forcing AP Mode...");
       WiFi.disconnect();
       WiFi.mode(WIFI_AP);
       WiFi.softAP("Girlianda-AP", "12345678");
       Serial.print("AP IP: "); Serial.println(WiFi.softAPIP());
+      wifiConnectStage = 0; // Stop trying
+      isScanning = false;
+    } else if (input == "status") {
+      Serial.println("--- Status ---");
+      Serial.print("Mode: "); Serial.println(garland.getMode());
+      Serial.print("Speed: "); Serial.println(garland.getSpeed());
+      Serial.print("Brightness: "); Serial.println(garland.getBrightness());
+      Serial.print("WiFi Mode: "); Serial.println(WiFi.getMode() == WIFI_AP ? "AP" : "STA");
+      Serial.print("STA IP: "); Serial.println(WiFi.localIP());
+      Serial.print("AP IP: "); Serial.println(WiFi.softAPIP());
+      Serial.println("--------------");
+    } else if (input == "scan") {
+      Serial.println("Manual scan triggered...");
+      int n = WiFi.scanNetworks();
+      if (n == 0) {
+          Serial.println("No networks found.");
+      } else {
+          Serial.printf("Found %d networks:\n", n);
+          for (int i = 0; i < n; ++i) {
+              Serial.printf("%d: %s (%d dBm)\n", i + 1, WiFi.SSID(i).c_str(), WiFi.RSSI(i));
+              delay(10);
+          }
+      }
+      Serial.println("-----------------------");
     } else {
-      Serial.println("Unknown command. Use m=X, s=X, b=X, wifi, ap");
+      Serial.println("Unknown command. Use m=X, s=X, b=X, wifi, ap, status, scan");
     }
   }
 }
@@ -151,19 +165,100 @@ void loop() {
   // Serial Control
   handleSerial();
 
-  /*// Logging Heartbeat to prove code is running and show IP
-  static unsigned long lastLog = 0;
-  if (millis() - lastLog > 5000) {
-    lastLog = millis();
-    Serial.print("Status: Running. Mode: ");
-    Serial.print(garland.getMode());
-    Serial.print(" IP: ");
-    if (WiFi.getMode() == WIFI_AP) {
-       Serial.print(WiFi.softAPIP());
-       Serial.print(" (AP)");
-    } else {
-       Serial.print(WiFi.localIP());
+  // WiFi Logic State Machine
+  if (wifiConnectStage == 3) {
+      // 3: Scanning
+      int n = WiFi.scanComplete();
+      if (n >= 0) {
+          Serial.println("Scan complete.");
+          isScanning = false;
+          
+          String bestSSID = "";
+          int bestRSSI = -1000;
+          
+          for (int i = 0; i < n; ++i) {
+              String currentSSID = WiFi.SSID(i);
+              int currentRSSI = WiFi.RSSI(i);
+              
+              if (currentSSID == ssid || currentSSID == ssidExt) {
+                  Serial.printf("Found target: %s (%d dBm)\n", currentSSID.c_str(), currentRSSI);
+                  if (currentRSSI > bestRSSI) {
+                      bestRSSI = currentRSSI;
+                      bestSSID = currentSSID;
+                  }
+              }
+          }
+          WiFi.scanDelete(); // Clean up RAM
+          
+          wifiPowerIndex = 0; // Start with lowest power
+          if (bestSSID != "") {
+              Serial.print("Best network: "); Serial.println(bestSSID);
+              // Decide stage based on which SSID it is
+              if (bestSSID == ssid) {
+                  startWiFiConnection(ssid, password, powerSteps[wifiPowerIndex]);
+                  wifiConnectStage = 1; // Trying Primary
+              } else {
+                  startWiFiConnection(ssidExt, password, powerSteps[wifiPowerIndex]);
+                  wifiConnectStage = 2; // Trying Secondary
+              }
+          } else {
+              Serial.println("Targets not found. Defaulting to Primary (Power 0).");
+              startWiFiConnection(ssid, password, powerSteps[wifiPowerIndex]);
+              wifiConnectStage = 1;
+          }
+      } else if (n == -2) {
+           Serial.println("Scan failed. Defaulting to Primary (Power 0).");
+           wifiPowerIndex = 0;
+           startWiFiConnection(ssid, password, powerSteps[wifiPowerIndex]);
+           wifiConnectStage = 1;
+           isScanning = false;
+      }
+  } 
+  else if (wifiConnectStage > 0) {
+    // Connection Attempt States
+    if (WiFi.status() == WL_CONNECTED) {
+       Serial.println("WiFi Connected!");
+       Serial.print("Station IP: "); Serial.println(WiFi.localIP());
+       wifiConnectStage = 0; // Done
+    } 
+    // Check for timeout (10 seconds)
+    else if (millis() - wifiConnectStart > 10000) {
+       if (wifiConnectStage == 1) {
+          // Timeout Primary
+          Serial.println("Primary failed attempt.");
+          wifiPowerIndex++;
+          
+          if (wifiPowerIndex < 4) {
+             // Retry with next power level
+             Serial.print("Retrying Primary with Power Level "); Serial.println(wifiPowerIndex);
+             startWiFiConnection(ssid, password, powerSteps[wifiPowerIndex]);
+          } else {
+             // All powers failed for Primary -> Switch to Secondary
+             Serial.println("Primary exhausted. Switching to Secondary.");
+             wifiPowerIndex = 0; // Reset power for secondary
+             startWiFiConnection(ssidExt, password, powerSteps[wifiPowerIndex]);
+             wifiConnectStage = 2;
+          }
+       } else if (wifiConnectStage == 2) {
+          // Timeout Secondary
+          Serial.println("Secondary failed attempt.");
+          wifiPowerIndex++;
+
+          if (wifiPowerIndex < 4) {
+              // Retry with next power level
+              Serial.print("Retrying Secondary with Power Level "); Serial.println(wifiPowerIndex);
+              startWiFiConnection(ssidExt, password, powerSteps[wifiPowerIndex]);
+          } else {
+              // All powers failed for Secondary -> AP
+              Serial.println("All attempts failed. Starting Access Point.");
+              Serial.println(WiFi.status());
+              WiFi.disconnect();
+              WiFi.mode(WIFI_AP);
+              WiFi.softAP("Girlianda-AP", "12345678");
+              Serial.print("AP IP: "); Serial.println(WiFi.softAPIP());
+              wifiConnectStage = 0; // Done
+          }
+       }
     }
-    Serial.println();
-  }*/
+  }
 }
