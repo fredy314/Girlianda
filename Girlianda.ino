@@ -31,15 +31,23 @@ void setup() {
   Serial.println("\n\n--- Starting Girlianda Debug Mode ---");
 
   // 1. Setup Garland Logic
+  // 1. Setup Garland Logic
   garland.begin();
   
-  // Visual Feedback: Fast flash = Booting
-  garland.setBrightness(255);
-  garland.setMode(Garland::MODE_STEADY_ON);
+  // Store saved settings
+  int storedMode = garland.getMode();
+  int storedBrightness = garland.getBrightness();
+  
+  // Visual Feedback: Fast flash = Booting (do not save these changes)
+  garland.setBrightness(255, false);
+  garland.setMode(Garland::MODE_STEADY_ON, false);
   delay(200); 
-  garland.setMode(Garland::MODE_OFF);
+  garland.setMode(Garland::MODE_OFF, false);
   delay(200);
-  garland.setMode(Garland::MODE_ALTERNATING);
+  
+  // Restore settings (do not save, as they are already saved)
+  garland.setBrightness(storedBrightness, false);
+  garland.setMode(storedMode, false);
   
   // 2. Setup WiFi with Timeout and AP Fallback
   // Try static config first

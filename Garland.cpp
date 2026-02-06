@@ -58,12 +58,14 @@ void Garland::_setupChannels(uint32_t hpoint0, uint32_t hpoint1) {
     ledc_channel_config(&ch1);
 }
 
-void Garland::setMode(int mode) {
+void Garland::setMode(int mode, bool save) {
     if (_mode == mode) return;
 
     // Режим дійсно змінився
     _mode = mode;
-    _prefs.putInt("mode", _mode); // Зберігаємо режим
+    if (save) {
+        _prefs.putInt("mode", _mode); // Зберігаємо режим
+    }
 
     // Канали більше не переналаштовуємо, бо 0,128 потрібно завжди
 
@@ -86,18 +88,22 @@ int Garland::getMode() const {
     return _mode;
 }
 
-void Garland::setSpeed(int speed) {
+void Garland::setSpeed(int speed, bool save) {
     _speed = constrain(speed, 1, 100);
-    _prefs.putInt("speed", _speed); // Зберігаємо швидкість
+    if (save) {
+        _prefs.putInt("speed", _speed); // Зберігаємо швидкість
+    }
 }
 
 int Garland::getSpeed() const {
     return _speed;
 }
 
-void Garland::setBrightness(int brightness) {
+void Garland::setBrightness(int brightness, bool save) {
     _manualBrightness = constrain(brightness, 0, 255);
-    _prefs.putInt("bright", _manualBrightness); // Зберігаємо яскравість
+    if (save) {
+        _prefs.putInt("bright", _manualBrightness); // Зберігаємо яскравість
+    }
     
     // Важливо: обмежуємо максимальну яскравість для анімацій
     _maxBrightness = _manualBrightness; 

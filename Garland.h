@@ -20,13 +20,13 @@ public:
     void begin();
     void tick();
 
-    void setMode(int mode);
+    void setMode(int mode, bool save = true);
     int getMode() const;
 
-    void setSpeed(int speed); // 1-100, де 100 - найшвидше
+    void setSpeed(int speed, bool save = true); // 1-100, де 100 - найшвидше
     int getSpeed() const;
 
-    void setBrightness(int brightness); // Для режиму постійного світіння
+    void setBrightness(int brightness, bool save = true); // Для режиму постійного світіння
     int getBrightness() const;
 
 private:
