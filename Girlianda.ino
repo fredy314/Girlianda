@@ -7,14 +7,14 @@
 // --- Configuration ---
 const char* ssid = "HomeF";
 const char* password = "21122112";
-
+/*
 // Static IP settings
 // Примітка: переконайтеся, що ця IP вільна і відповідає вашій підмережі
 IPAddress staticIP(192, 168, 0, 241);
 IPAddress gateway(192, 168, 0, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress primaryDNS(8, 8, 8, 8);
-
+*/
 // Pins
 const int pinA = 10; 
 const int pinB = 7;
@@ -43,9 +43,9 @@ void setup() {
   
   // 2. Setup WiFi with Timeout and AP Fallback
   // Try static config first
-  if (!WiFi.config(staticIP, gateway, subnet, primaryDNS)) {
+  /*if (!WiFi.config(staticIP, gateway, subnet, primaryDNS)) {
     Serial.println("Static IP Config Failed!");
-  }
+  }*/
   
   WiFi.begin(ssid, password);
   Serial.print("Connecting to WiFi");
@@ -86,6 +86,8 @@ void setup() {
     Serial.print("AP IP: ");
     Serial.println(WiFi.softAPIP());
   }
+  WiFi.setSleep(false);
+  
 
   // 3. Setup Web Server
   pages.initPagesHandlers(server);

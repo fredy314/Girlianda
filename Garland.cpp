@@ -23,12 +23,8 @@ void Garland::begin() {
     };
     ledc_timer_config(&ledc_timer);
 
-    // Початкове налаштування каналів відповідно до завантаженого режиму
-    if (_mode == MODE_ALTERNATING) {
-        _setupChannels(0, 128);
-    } else {
-        _setupChannels(0, 0);
-    }
+    // Початкове налаштування каналів (завжди протифаза для роботи обох плечей гірлянди)
+    _setupChannels(0, 128);
     
     // Якщо завантажили режим постійного світіння, треба відновити яскравість
     if (_mode == MODE_STEADY_ON) {
@@ -66,22 +62,10 @@ void Garland::setMode(int mode) {
     if (_mode == mode) return;
 
     // Режим дійсно змінився
-    
-    // Якщо перемикаємось на/з режиму ALTERNATING, переналаштовуємо канали
-    // Всі режими крім ALTERNATING повинні бути синхронні (0,0)
-    bool isAlternating = (mode == MODE_ALTERNATING);
     _mode = mode;
     _prefs.putInt("mode", _mode); // Зберігаємо режим
 
-    if (wasAlternating != isAlternating) {
-        if (isAlternating) {
-            _setupChannels(0, 128); // Протифаза
-        } else {
-            _setupChannels(0, 0);   // Синхронно
-        }
-        // Невелика затримка після переналаштування каналів
-        delay(5);
-    }
+    // Канали більше не переналаштовуємо, бо 0,128 потрібно завжди
 
     // Скидання стану анімації
     if (_mode == MODE_OFF) {
@@ -164,7 +148,20 @@ void Garland::tick() {
                 _fadeAmount = -_fadeAmount;          // Reverse
             }
             
-            _updateDuty(_currentBrightness);
+            if (_mode == MODE_BREATHING_SYNC) {
+                 // Режим 3: Протифазне дихання (одна половина гасне, інша загоряється)
+                 int valA = _currentBrightness;
+                 int valB = _maxBrightness - _currentBrightness;
+                 
+                 ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, valA);
+                 ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+
+                 ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1, valB);
+                 ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_1);
+            } else {
+                 // Режим 2: Синхронне дихання (разом)
+                 _updateDuty(_currentBrightness);
+            }
             
         } else if (_mode == MODE_FLICKER) {
              // Імітація свічки: База (70%) + Шум (30%)
