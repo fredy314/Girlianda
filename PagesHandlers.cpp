@@ -29,6 +29,8 @@ const char HTML_HOME[] PROGMEM = R"rawliteral(
     input[type=range] { width: 100%; }
     label { display: block; margin-bottom: 5px; font-size: 14px; color: #bbb; }
     #status { margin-top: 15px; font-size: 12px; color: #7f8c8d; }
+    .ota-link { background: #8e44ad; margin-top: 15px; text-decoration: none; }
+    .ota-link:hover { background: #9b59b6; }
   </style>
 </head>
 <body>
@@ -52,6 +54,8 @@ const char HTML_HOME[] PROGMEM = R"rawliteral(
       <label for="bright">Яскравість (для постійного): <span id="bright-val">255</span></label>
       <input type="range" id="bright" min="0" max="255" value="255" oninput="updateBright(this.value)" onchange="setBright(this.value)">
     </div>
+    
+    <a href="/update" class="btn ota-link" target="_blank">🔄 Оновити</a>
     
     <div id="status">Підключення...</div>
   </div>

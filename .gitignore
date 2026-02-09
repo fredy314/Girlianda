@@ -1,0 +1,24 @@
+# Arduino IDE
+.DS_Store
+*.hex
+*.elf
+*.bin
+*.map
+*.o
+*.a
+*.d
+*.tmp
+*.log
+build/
+.arduino/
+arduino.json
+
+# VS Code / PlatformIO
+.vscode/
+.pio/
+.pioenvs/
+.piolibdeps/
+.idea/
+
+# Secret files (if using a separate secrets file later)
+secrets.h
