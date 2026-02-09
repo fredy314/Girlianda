@@ -8,6 +8,7 @@
 #include <AuthenticationMiddleware.h>
 #include "Garland.h"
 #include "PagesHandlers.h"
+#include "RemoteXYInterface.h"
 // Pins
 const int pinA1 = 10; 
 const int pinA2 = 7;
@@ -21,6 +22,7 @@ AsyncWebServer server(80);
 PagesHandlers pages(garlandA, garlandB);
 AuthenticationMiddleware authMiddleware;
 WiFiManager wifiManager;
+RemoteXYInterface remoteXY(garlandA, garlandB);
 
 void setup() {
   Serial.begin(115200);
@@ -30,6 +32,7 @@ void setup() {
   garlandB.begin();
   wifiManager.begin();
   authMiddleware.begin();
+  remoteXY.begin();
   server.addMiddleware(&authMiddleware);
   pages.initPagesHandlers(server);
   ElegantOTA.begin(&server);
@@ -41,5 +44,6 @@ void loop() {
   garlandA.tick();
   garlandB.tick();
   wifiManager.tick();
+  remoteXY.tick();
   ElegantOTA.loop();
 }
