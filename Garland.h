@@ -8,15 +8,14 @@
 class Garland {
 public:
     enum Mode {
-        MODE_OFF = 0,
-        MODE_STEADY_ON = 1,
-        MODE_ALTERNATING = 2, // Протифаза
-        MODE_BREATHING_SYNC = 3, // Синхронне дихання
-        MODE_CHAOS = 4, // Хаос
-        MODE_FLICKER = 5 // Мерехтіння (Свічка)
+        MODE_CONSTANT = 0,           // Постійне світіння
+        MODE_ALTERNATING_SMOOTH = 1, // Почергове плавне
+        MODE_BREATHING = 2,          // Дихання
+        MODE_CHAOS = 3,              // Хаос
+        MODE_FLICKER = 4             // Свічка
     };
 
-    Garland(int pinA, int pinB);
+    Garland(int pinA1, int pinA2, int channel0, int channel1, int timerNum, const char* prefsNamespace);
     void begin();
     void tick();
 
@@ -30,23 +29,31 @@ public:
     int getBrightness() const;
 
 private:
-    int _pinA;
-    int _pinB;
+    int _pinA1;
+    int _pinA2;
+    int _channel0;
+    int _channel1;
+    int _timerNum;
     int _mode;
     int _speed;
-    int _manualBrightness; // Яскравість для режиму STEADY
+    int _manualBrightness; // Яскравість для режиму CONSTANT
+    const char* _prefsNamespace;
 
     // Змінні для анімації
-    int _currentBrightness;
-    int _fadeAmount;
+    float _phase; // Фаза анімації (0.0 - 1.0)
+    int _driveMode; // 0=OFF, 1=POS, 2=NEG, 3=AC
     unsigned long _lastUpdate;
-    int _maxBrightness; // Ліміт яскравості (безпека)
+    
+    // Для режиму Хаос
+    float _chaosValue;
+    float _chaosTarget;
+    unsigned long _chaosTime;
     
     Preferences _prefs; // Об'єкт для збереження налаштувань
 
     // Внутрішні методи
-    void _setupChannels(uint32_t hpoint0, uint32_t hpoint1);
-    void _updateDuty(int val);
+    void _setupChannels();
+    void _updateDuty(float level, int driveMode);
 };
 
 #endif

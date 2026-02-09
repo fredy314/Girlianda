@@ -9,11 +9,12 @@
 
 class PagesHandlers {
 public:
-    PagesHandlers(Garland& garland);
+    PagesHandlers(Garland& garlandA, Garland& garlandB);
     void initPagesHandlers(AsyncWebServer& webServer);
 
 private:
-    Garland& _garland;
+    Garland& _garlandA;
+    Garland& _garlandB;
 
     void setupHomePageHandler(AsyncWebServer& webServer);
     void setupApiStatusHandler(AsyncWebServer& webServer);
