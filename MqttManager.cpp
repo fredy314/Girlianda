@@ -13,6 +13,7 @@ MqttManager::MqttManager(Garland& garlandA, Garland& garlandB)
     : _garlandA(garlandA), _garlandB(garlandB), _mqttClient(_wifiClient),
       _lastReconnectAttempt(0), _lastStatePublish(0),
       _discoveryPublished(false),
+      _lastActiveModeA(1), _lastActiveModeB(1),
       _mqttHosts(mqttHosts), _mqttHostCount(mqttHostCount), _currentHostIndex(0)
 {
     instance = this;
@@ -24,7 +25,7 @@ void MqttManager::begin() {
     // Встановлюємо перший хост з масиву
     _mqttClient.setServer(_mqttHosts[_currentHostIndex], MQTT_PORT);
     _mqttClient.setCallback(messageCallback);
-    _mqttClient.setBufferSize(1024); // Збільшуємо буфер для великих повідомлень
+    _mqttClient.setBufferSize(2048); // Збільшуємо буфер для великих повідомлень (JSON)
     Serial.printf("MQTT: Using host %s\n", _mqttHosts[_currentHostIndex]);
 }
 
@@ -68,13 +69,13 @@ bool MqttManager::reconnect() {
         }
         
         // Підписуємось на команди для гірлянди A
+        _mqttClient.subscribe("homeassistant/light/girlianda/garland_a/set");
         _mqttClient.subscribe("homeassistant/select/girlianda/garland_a_mode/set");
-        _mqttClient.subscribe("homeassistant/number/girlianda/garland_a_brightness/set");
         _mqttClient.subscribe("homeassistant/number/girlianda/garland_a_speed/set");
         
         // Підписуємось на команди для гірлянди B
+        _mqttClient.subscribe("homeassistant/light/girlianda/garland_b/set");
         _mqttClient.subscribe("homeassistant/select/girlianda/garland_b_mode/set");
-        _mqttClient.subscribe("homeassistant/number/girlianda/garland_b_brightness/set");
         _mqttClient.subscribe("homeassistant/number/girlianda/garland_b_speed/set");
         
         return true;
@@ -99,14 +100,40 @@ void MqttManager::publishAvailability(bool online) {
 
 void MqttManager::publishDiscovery() {
     // Публікуємо конфігурацію для гірлянди A
+    publishLightConfig("garland_a", "Гірлянда A");
     publishSelectConfig("garland_a", "Гірлянда A Режим");
-    publishNumberConfig("garland_a", "brightness", "Гірлянда A Яскравість", 0, 255, "", "mdi:brightness-6");
     publishNumberConfig("garland_a", "speed", "Гірлянда A Швидкість", 1, 100, "", "mdi:speedometer");
     
     // Публікуємо конфігурацію для гірлянди B
+    publishLightConfig("garland_b", "Гірлянда B");
     publishSelectConfig("garland_b", "Гірлянда B Режим");
-    publishNumberConfig("garland_b", "brightness", "Гірлянда B Яскравість", 0, 255, "", "mdi:brightness-6");
     publishNumberConfig("garland_b", "speed", "Гірлянда B Швидкість", 1, 100, "", "mdi:speedometer");
+}
+
+void MqttManager::publishLightConfig(const char* garland, const char* name) {
+    String configTopic = String("homeassistant/light/girlianda/") + garland + "/config";
+    String stateTopic = String("homeassistant/light/girlianda/") + garland + "/state";
+    String cmdTopic = String("homeassistant/light/girlianda/") + garland + "/set";
+    
+    String config = "{";
+    config += "\"name\":\"" + String(name) + "\",";
+    config += "\"unique_id\":\"" + String(DEVICE_ID) + "_" + garland + "_light\",";
+    config += "\"state_topic\":\"" + stateTopic + "\",";
+    config += "\"command_topic\":\"" + cmdTopic + "\",";
+    config += "\"brightness\":true,";
+    config += "\"brightness_scale\":255,";
+    config += "\"schema\":\"json\",";
+    config += "\"color_mode\":true,";
+    config += "\"supported_color_modes\":[\"brightness\"],";
+    config += "\"availability_topic\":\"" + _availabilityTopic + "\",";
+    config += "\"device\":{";
+    config += "\"identifiers\":[\"" + String(DEVICE_ID) + "\"],";
+    config += "\"name\":\"" + String(DEVICE_NAME) + "\",";
+    config += "\"manufacturer\":\"Custom\",";
+    config += "\"model\":\"ESP32 Garland Controller\"";
+    config += "}}";
+    
+    _mqttClient.publish(configTopic.c_str(), config.c_str(), true);
 }
 
 void MqttManager::publishSelectConfig(const char* garland, const char* name) {
@@ -161,13 +188,22 @@ void MqttManager::publishGarlandStates() {
 }
 
 void MqttManager::publishGarlandState(const char* garland, Garland& garlandObj) {
+    // Публікуємо стан світла (schema: json)
+    String lightStateTopic = String("homeassistant/light/girlianda/") + garland + "/state";
+    StaticJsonDocument<256> doc;
+    doc["state"] = (garlandObj.getMode() == 0 && garlandObj.getBrightness() == 0) ? "OFF" : "ON";
+    // Оскільки в Garland яскравість використовується тільки для CONSTANT режиму, 
+    // ми публікуємо її як стан яскравості лампи
+    doc["brightness"] = garlandObj.getBrightness();
+    doc["color_mode"] = "brightness";
+    
+    String output;
+    serializeJson(doc, output);
+    _mqttClient.publish(lightStateTopic.c_str(), output.c_str());
+
     // Публікуємо режим
     String modeStateTopic = String("homeassistant/select/girlianda/") + garland + "_mode/state";
     _mqttClient.publish(modeStateTopic.c_str(), getModeName(garlandObj.getMode()));
-    
-    // Публікуємо яскравість
-    String brightnessStateTopic = String("homeassistant/number/girlianda/") + garland + "_brightness/state";
-    _mqttClient.publish(brightnessStateTopic.c_str(), String(garlandObj.getBrightness()).c_str());
     
     // Публікуємо швидкість
     String speedStateTopic = String("homeassistant/number/girlianda/") + garland + "_speed/state";
@@ -202,7 +238,34 @@ void MqttManager::handleMessage(String topic, String payload) {
     Serial.print(F(" = "));
     Serial.println(payload);
     
-    // Обробка команд для гірлянди A
+    // Обробка команд для гірлянди A (Light JSON)
+    if (topic == "homeassistant/light/girlianda/garland_a/set") {
+        StaticJsonDocument<512> doc;
+        DeserializationError err = deserializeJson(doc, payload);
+        if (!err) {
+            if (doc.containsKey("state")) {
+                String state = doc["state"];
+                if (state == "ON") {
+                    _garlandA.setMode(_lastActiveModeA);
+                } else if (state == "OFF") {
+                    if (_garlandA.getMode() > 0) _lastActiveModeA = _garlandA.getMode();
+                    _garlandA.setBrightness(0);
+                    _garlandA.setMode(0);
+                }
+            }
+            if (doc.containsKey("brightness")) {
+                int brightness = doc["brightness"];
+                _garlandA.setBrightness(brightness);
+                if (brightness > 0 && _garlandA.getMode() == 0) {
+                     _garlandA.setMode(_lastActiveModeA);
+                }
+            }
+        }
+        publishGarlandState("garland_a", _garlandA);
+        return;
+    }
+    
+    // Обробка режимів для гірлянди A
     if (topic == "homeassistant/select/girlianda/garland_a_mode/set") {
         int mode = 0;
         if (payload == "Постійне") mode = 0;
@@ -210,39 +273,68 @@ void MqttManager::handleMessage(String topic, String payload) {
         else if (payload == "Дихання") mode = 2;
         else if (payload == "Хаос") mode = 3;
         else if (payload == "Свічка") mode = 4;
+        
+        _lastActiveModeA = mode;
         _garlandA.setMode(mode);
         publishGarlandState("garland_a", _garlandA);
+        return;
     }
-    else if (topic == "homeassistant/number/girlianda/garland_a_brightness/set") {
-        int brightness = payload.toInt();
-        _garlandA.setBrightness(brightness);
-        publishGarlandState("garland_a", _garlandA);
-    }
-    else if (topic == "homeassistant/number/girlianda/garland_a_speed/set") {
+    
+    // Обробка швидкості для гірлянди A
+    if (topic == "homeassistant/number/girlianda/garland_a_speed/set") {
         int speed = payload.toInt();
         _garlandA.setSpeed(speed);
         publishGarlandState("garland_a", _garlandA);
+        return;
     }
     
-    // Обробка команд для гірлянди B
-    else if (topic == "homeassistant/select/girlianda/garland_b_mode/set") {
+    // Обробка команд для гірлянди B (Light JSON)
+    if (topic == "homeassistant/light/girlianda/garland_b/set") {
+        StaticJsonDocument<512> doc;
+        DeserializationError err = deserializeJson(doc, payload);
+        if (!err) {
+            if (doc.containsKey("state")) {
+                String state = doc["state"];
+                if (state == "ON") {
+                    _garlandB.setMode(_lastActiveModeB);
+                } else if (state == "OFF") {
+                    if (_garlandB.getMode() > 0) _lastActiveModeB = _garlandB.getMode();
+                    _garlandB.setBrightness(0);
+                    _garlandB.setMode(0);
+                }
+            }
+            if (doc.containsKey("brightness")) {
+                int brightness = doc["brightness"];
+                _garlandB.setBrightness(brightness);
+                if (brightness > 0 && _garlandB.getMode() == 0) {
+                     _garlandB.setMode(_lastActiveModeB);
+                }
+            }
+        }
+        publishGarlandState("garland_b", _garlandB);
+        return;
+    }
+    
+    // Обробка режимів для гірлянди B
+    if (topic == "homeassistant/select/girlianda/garland_b_mode/set") {
         int mode = 0;
         if (payload == "Постійне") mode = 0;
         else if (payload == "Почергове") mode = 1;
         else if (payload == "Дихання") mode = 2;
         else if (payload == "Хаос") mode = 3;
         else if (payload == "Свічка") mode = 4;
+        
+        _lastActiveModeB = mode;
         _garlandB.setMode(mode);
         publishGarlandState("garland_b", _garlandB);
+        return;
     }
-    else if (topic == "homeassistant/number/girlianda/garland_b_brightness/set") {
-        int brightness = payload.toInt();
-        _garlandB.setBrightness(brightness);
-        publishGarlandState("garland_b", _garlandB);
-    }
-    else if (topic == "homeassistant/number/girlianda/garland_b_speed/set") {
+    
+    // Обробка швидкості для гірлянди B
+    if (topic == "homeassistant/number/girlianda/garland_b_speed/set") {
         int speed = payload.toInt();
         _garlandB.setSpeed(speed);
         publishGarlandState("garland_b", _garlandB);
+        return;
     }
 }

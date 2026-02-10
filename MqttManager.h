@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
+#include <ArduinoJson.h>
 #include "Garland.h"
 
 class MqttManager {
@@ -25,6 +26,10 @@ private:
     unsigned long _lastReconnectAttempt;
     unsigned long _lastStatePublish;
     bool _discoveryPublished;
+    
+    // Збереження останнього активного режиму для кожної гірлянди (для ON/OFF)
+    int _lastActiveModeA;
+    int _lastActiveModeB;
     
     // MQTT налаштування
     static const int MQTT_PORT = 1883;
@@ -51,6 +56,7 @@ private:
     void handleMessage(String topic, String payload);
     
     // Допоміжні методи для створення конфігурацій HomeAssistant
+    void publishLightConfig(const char* garland, const char* name);
     void publishSelectConfig(const char* garland, const char* name);
     void publishNumberConfig(const char* garland, const char* parameter, const char* name, int min, int max, const char* unit, const char* icon);
     
