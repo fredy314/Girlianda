@@ -71,7 +71,8 @@
     -   `ElegantOTA`
     -   `WiFiManager` (для ESP32)
     -   `AuthenticationMiddleware`
-    -   `RemoteXY` (для Bluetooth керування)
+    -   `NimBLE-Arduino` (h2zero/NimBLE-Arduino для Bluetooth керування)
+    -   `ArduinoJson` (для JSON парсингу в BLE)
     -   ESP32 Board package
 
 2.  **Налаштування**:
@@ -96,20 +97,45 @@
 
 Відкрийте цю адресу у браузері для доступу до панелі керування.
 
-### 📱 Bluetooth Керування (RemoteXY)
+### 📱 Bluetooth Керування (BLE)
 
-Проєкт підтримує керування через Bluetooth Low Energy (BLE) за допомогою додатку **RemoteXY**.
+Проєкт підтримує керування через Bluetooth Low Energy (BLE) з використанням бібліотеки **NimBLE-Arduino**.
 
-**Підключення:**
-1. Встановіть додаток **RemoteXY** на Android або iOS
-2. У додатку натисніть "+" → "Bluetooth LE"
-3. Знайдіть пристрій **"Girlianda"** та підключіться
+#### Через BLE сканер (nRF Connect, LightBlue тощо):
+1. Встановіть BLE сканер на Android або iOS (наприклад, **nRF Connect**)
+2. Знайдіть пристрій **"girlianda"** (ім'я з `WIFI_HOSTNAME`)
+3. Підключіться до пристрою
+4. Знайдіть сервіс з UUID: `4fafc201-1fb5-459e-8fcc-c5c9c331914b`
 
-**Елементи керування:**
-- 🔀 **Перемикач гірлянди** - вибір між Garland A та Garland B
-- 🎭 **Перемикач режиму** - вибір режиму (0-4)
-- ⚡ **Слайдер швидкості** - регулювання швидкості анімації (0-100)
-- 💡 **Слайдер яскравості** - регулювання яскравості (0-100)
+**Характеристики:**
+- 📊 **Статус** (READ + NOTIFY): `beb5483e-36e1-4688-b7f5-ea07361b26a8`
+  - Повертає JSON з поточним станом обох гірлянд
+  - Автоматично оновлюється кожні 2 секунди
+- ⚙️ **Команди** (WRITE): `1c95d5e3-d8f7-413a-bf3d-7a2e5d7be87e`
+  - Приймає JSON команди для керування гірляндами
+
+**Формат JSON:**
+```json
+// Читання статусу
+{
+  "garlandA": {"mode": 0, "speed": 30, "brightness": 255},
+  "garlandB": {"mode": 1, "speed": 50, "brightness": 200},
+  "ip": "192.168.1.100"
+}
+
+// Запис команд
+{"garland": "A", "mode": 2}
+{"garland": "B", "speed": 75, "brightness": 150}
+```
+
+#### Через Web Bluetooth (Chrome/Edge):
+1. Відкрийте веб-інтерфейс `https://girlianda.loc/`
+2. Натисніть **"📱 Скачати для BLE"**
+3. Збережіть файл `girlianda.html`
+4. Відкрийте файл в браузері з підтримкою Web Bluetooth (Chrome/Edge)
+5. Натисніть кнопку **"Підключитися до BLE"**
+6. Виберіть пристрій **"girlianda"**
+7. Керуйте гірляндами через BLE інтерфейс
 
 **Примітка:** ESP32-C3 підтримує тільки BLE (Bluetooth Low Energy), не класичний Bluetooth.
 

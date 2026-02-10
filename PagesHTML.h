@@ -25,7 +25,7 @@ const char HTML_CHRISTMAS_TREE_SVG[] PROGMEM = R"rawliteral(
 </svg>
 )rawliteral";
 
-const char HTML_HOME[] PROGMEM = R"rawliteral(
+const char HTML_HOME_BASE[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
 <html lang="uk">
 <head>
@@ -156,6 +156,16 @@ const char HTML_HOME[] PROGMEM = R"rawliteral(
     .ota-link:hover { 
       background: linear-gradient(135deg, #9b59b6 0%, #af7ac5 100%);
     }
+    .download-link {
+      background: linear-gradient(135deg, #16a085 0%, #1abc9c 100%);
+      margin-top: 10px;
+      text-decoration: none;
+      display: block;
+      text-align: center;
+    }
+    .download-link:hover {
+      background: linear-gradient(135deg, #1abc9c 0%, #48c9b0 100%);
+    }
     #status {
       text-align: center;
       margin-top: 20px;
@@ -221,12 +231,13 @@ const char HTML_HOME[] PROGMEM = R"rawliteral(
         </div>
       </div>
     </div>
-
-    <a href="/update" class="btn ota-link" target="_blank">🔄 Оновити прошивку</a>
     
     <div id="status">Підключення...</div>
-  </div>
+)rawliteral";
 
+const char HTML_SCRIPTS_API[] PROGMEM = R"rawliteral(
+<a href="/update" class="btn ota-link" target="_blank">🔄 Оновити прошивку</a>
+  </div>
 <script>
 function setMode(garland, mode) {
   fetch(`/api/set?garland=${garland}&mode=${mode}`)

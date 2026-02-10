@@ -19,7 +19,26 @@ void PagesHandlers::initPagesHandlers(AsyncWebServer& webServer) {
 
 void PagesHandlers::setupHomePageHandler(AsyncWebServer& webServer) {
     webServer.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send(200, "text/html", HTML_HOME);
+        // Відправити HTML у два етапи: базова частина + API скрипти
+        AsyncWebServerResponse *response = request->beginChunkedResponse("text/html", [](uint8_t *buffer, size_t maxLen, size_t index) -> size_t {
+            // Спочатку відправити HTML_HOME_BASE
+            size_t baseLen = strlen_P(HTML_HOME_BASE);
+            if (index < baseLen) {
+                size_t toSend = min(maxLen, baseLen - index);
+                memcpy_P(buffer, HTML_HOME_BASE + index, toSend);
+                return toSend;
+            }
+            // Потім відправити HTML_SCRIPTS_API
+            size_t scriptsStart = index - baseLen;
+            size_t scriptsLen = strlen_P(HTML_SCRIPTS_API);
+            if (scriptsStart < scriptsLen) {
+                size_t toSend = min(maxLen, scriptsLen - scriptsStart);
+                memcpy_P(buffer, HTML_SCRIPTS_API + scriptsStart, toSend);
+                return toSend;
+            }
+            return 0; // Кінець
+        });
+        request->send(response);
     });
 }
 

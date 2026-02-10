@@ -81,6 +81,9 @@ void Garland::setMode(int mode, bool save) {
     // Встановлюємо початковий стан для нового режиму
     if (_manualBrightness == 0) {
         _updateDuty(0.0f, 0); // Вимкнено
+    } else if (_mode == MODE_CONSTANT) {
+        // При перемиканні на режим Постійне встановлюємо збережену яскравість
+        _updateDuty(_manualBrightness / 255.0f, 3); // AC mode
     }
 }
 

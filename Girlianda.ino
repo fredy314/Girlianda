@@ -8,7 +8,8 @@
 #include <AuthenticationMiddleware.h>
 #include "Garland.h"
 #include "PagesHandlers.h"
-#include "RemoteXYInterface.h"
+#include "MqttManager.h"
+
 // Pins
 const int pinA1 = 10; 
 const int pinA2 = 7;
@@ -22,17 +23,19 @@ AsyncWebServer server(80);
 PagesHandlers pages(garlandA, garlandB);
 AuthenticationMiddleware authMiddleware;
 WiFiManager wifiManager;
-RemoteXYInterface remoteXY(garlandA, garlandB);
+MqttManager mqttManager(garlandA, garlandB);
 
 void setup() {
   Serial.begin(115200);
   delay(2000);
   Serial.println("\n--- Starting Girlianda (2 channels) ---");
+  
+  
   garlandA.begin();
   garlandB.begin();
   wifiManager.begin();
   authMiddleware.begin();
-  remoteXY.begin();
+  mqttManager.begin();
   server.addMiddleware(&authMiddleware);
   pages.initPagesHandlers(server);
   ElegantOTA.begin(&server);
@@ -44,6 +47,6 @@ void loop() {
   garlandA.tick();
   garlandB.tick();
   wifiManager.tick();
-  remoteXY.tick();
+  mqttManager.loop();
   ElegantOTA.loop();
 }
