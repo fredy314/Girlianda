@@ -14,7 +14,10 @@ MqttManager::MqttManager(Garland& garlandA, Garland& garlandB)
       _lastReconnectAttempt(0), _lastStatePublish(0),
       _discoveryPublished(false),
       _lastActiveModeA(1), _lastActiveModeB(1),
-      _mqttHosts(mqttHosts), _mqttHostCount(mqttHostCount), _currentHostIndex(0)
+      _mqttHosts(mqttHosts), _mqttHostCount(mqttHostCount), _currentHostIndex(0),
+      _lastSentModeA(-1), _lastSentBrightnessA(-1), _lastSentSpeedA(-1),
+      _lastSentModeB(-1), _lastSentBrightnessB(-1), _lastSentSpeedB(-1),
+      _lastPeriodicPublish(0)
 {
     instance = this;
     _baseTopic = String("homeassistant");
@@ -45,6 +48,21 @@ void MqttManager::loop() {
         unsigned long now = millis();
         if (now - _lastStatePublish > 5000) {
             _lastStatePublish = now;
+            publishGarlandStates();
+        }
+        
+        // Періодична публікація availability та discovery кожні 10 хвилин
+        if (now - _lastPeriodicPublish > 600000) { // 600000 мс = 10 хвилин
+            _lastPeriodicPublish = now;
+            Serial.println("MQTT: Periodic publish of availability and discovery");
+            publishAvailability(true);
+            publishDiscovery();
+            _lastSentModeA=-1;
+            _lastSentModeB=-1;
+            _lastSentBrightnessA=-1;
+            _lastSentBrightnessB=-1;
+            _lastSentSpeedA=-1;
+            _lastSentSpeedB=-1;
             publishGarlandStates();
         }
     }
@@ -183,18 +201,26 @@ void MqttManager::publishNumberConfig(const char* garland, const char* parameter
 }
 
 void MqttManager::publishGarlandStates() {
-    publishGarlandState("garland_a", _garlandA);
-    publishGarlandState("garland_b", _garlandB);
+    publishGarlandState("garland_a", _garlandA, _lastSentModeA, _lastSentBrightnessA, _lastSentSpeedA);
+    publishGarlandState("garland_b", _garlandB, _lastSentModeB, _lastSentBrightnessB, _lastSentSpeedB);
 }
 
-void MqttManager::publishGarlandState(const char* garland, Garland& garlandObj) {
+void MqttManager::publishGarlandState(const char* garland, Garland& garlandObj, int& lastMode, int& lastBrightness, int& lastSpeed, bool force) {
+    int currentMode = garlandObj.getMode();
+    int currentBrightness = garlandObj.getBrightness();
+    int currentSpeed = garlandObj.getSpeed();
+    
+    if (!force && currentMode == lastMode && currentBrightness == lastBrightness && currentSpeed == lastSpeed) {
+        return; // Змін немає, нічого не публікуємо
+    }
+
     // Публікуємо стан світла (schema: json)
     String lightStateTopic = String("homeassistant/light/girlianda/") + garland + "/state";
     StaticJsonDocument<256> doc;
-    doc["state"] = (garlandObj.getMode() == 0 && garlandObj.getBrightness() == 0) ? "OFF" : "ON";
+    doc["state"] = (currentMode == 0 && currentBrightness == 0) ? "OFF" : "ON";
     // Оскільки в Garland яскравість використовується тільки для CONSTANT режиму, 
     // ми публікуємо її як стан яскравості лампи
-    doc["brightness"] = garlandObj.getBrightness();
+    doc["brightness"] = currentBrightness;
     doc["color_mode"] = "brightness";
     
     String output;
@@ -203,11 +229,16 @@ void MqttManager::publishGarlandState(const char* garland, Garland& garlandObj) 
 
     // Публікуємо режим
     String modeStateTopic = String("homeassistant/select/girlianda/") + garland + "_mode/state";
-    _mqttClient.publish(modeStateTopic.c_str(), getModeName(garlandObj.getMode()));
+    _mqttClient.publish(modeStateTopic.c_str(), getModeName(currentMode));
     
     // Публікуємо швидкість
     String speedStateTopic = String("homeassistant/number/girlianda/") + garland + "_speed/state";
-    _mqttClient.publish(speedStateTopic.c_str(), String(garlandObj.getSpeed()).c_str());
+    _mqttClient.publish(speedStateTopic.c_str(), String(currentSpeed).c_str());
+    
+    // Оновлюємо останні надіслані значення
+    lastMode = currentMode;
+    lastBrightness = currentBrightness;
+    lastSpeed = currentSpeed;
 }
 
 const char* MqttManager::getModeName(int mode) {
@@ -261,7 +292,7 @@ void MqttManager::handleMessage(String topic, String payload) {
                 }
             }
         }
-        publishGarlandState("garland_a", _garlandA);
+        publishGarlandState("garland_a", _garlandA, _lastSentModeA, _lastSentBrightnessA, _lastSentSpeedA);
         return;
     }
     
@@ -276,7 +307,7 @@ void MqttManager::handleMessage(String topic, String payload) {
         
         _lastActiveModeA = mode;
         _garlandA.setMode(mode);
-        publishGarlandState("garland_a", _garlandA);
+        publishGarlandState("garland_a", _garlandA, _lastSentModeA, _lastSentBrightnessA, _lastSentSpeedA);
         return;
     }
     
@@ -284,7 +315,7 @@ void MqttManager::handleMessage(String topic, String payload) {
     if (topic == "homeassistant/number/girlianda/garland_a_speed/set") {
         int speed = payload.toInt();
         _garlandA.setSpeed(speed);
-        publishGarlandState("garland_a", _garlandA);
+        publishGarlandState("garland_a", _garlandA, _lastSentModeA, _lastSentBrightnessA, _lastSentSpeedA);
         return;
     }
     
@@ -311,7 +342,7 @@ void MqttManager::handleMessage(String topic, String payload) {
                 }
             }
         }
-        publishGarlandState("garland_b", _garlandB);
+        publishGarlandState("garland_b", _garlandB, _lastSentModeB, _lastSentBrightnessB, _lastSentSpeedB);
         return;
     }
     
@@ -326,7 +357,7 @@ void MqttManager::handleMessage(String topic, String payload) {
         
         _lastActiveModeB = mode;
         _garlandB.setMode(mode);
-        publishGarlandState("garland_b", _garlandB);
+        publishGarlandState("garland_b", _garlandB, _lastSentModeB, _lastSentBrightnessB, _lastSentSpeedB);
         return;
     }
     
@@ -334,7 +365,7 @@ void MqttManager::handleMessage(String topic, String payload) {
     if (topic == "homeassistant/number/girlianda/garland_b_speed/set") {
         int speed = payload.toInt();
         _garlandB.setSpeed(speed);
-        publishGarlandState("garland_b", _garlandB);
+        publishGarlandState("garland_b", _garlandB, _lastSentModeB, _lastSentBrightnessB, _lastSentSpeedB);
         return;
     }
 }

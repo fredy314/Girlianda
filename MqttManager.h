@@ -61,7 +61,12 @@ private:
     void publishNumberConfig(const char* garland, const char* parameter, const char* name, int min, int max, const char* unit, const char* icon);
     
     // Методи для публікації станів окремих гірлянд
-    void publishGarlandState(const char* garland, Garland& garlandObj);
+    void publishGarlandState(const char* garland, Garland& garlandObj, int& lastMode, int& lastBrightness, int& lastSpeed, bool force = false);
+    
+    // Збереження останніх надісланих значень для кожної гірлянди
+    int _lastSentModeA, _lastSentBrightnessA, _lastSentSpeedA;
+    int _lastSentModeB, _lastSentBrightnessB, _lastSentSpeedB;
+    unsigned long _lastPeriodicPublish;
     
     // Допоміжний метод для отримання назви режиму
     const char* getModeName(int mode);
