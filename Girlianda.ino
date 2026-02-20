@@ -6,9 +6,12 @@
 #include "secrets.h"
 #include <WiFiManager.h>
 #include <AuthenticationMiddleware.h>
+#include <ESPWebMqttManager.h>
+#include <ArduinoJson.h>
 #include "Garland.h"
 #include "PagesHandlers.h"
-#include "MqttManager.h"
+
+#include "MqttHelper.h"
 
 // Pins
 const int pinA1 = 10; 
@@ -23,7 +26,7 @@ AsyncWebServer server(80);
 PagesHandlers pages(garlandA, garlandB);
 AuthenticationMiddleware authMiddleware;
 WiFiManager wifiManager;
-MqttManager mqttManager(garlandA, garlandB);
+ESPWebMqttManager mqttManager("girlianda", "Гірлянда");
 
 void setup() {
   Serial.begin(115200);
@@ -34,8 +37,9 @@ void setup() {
   garlandA.begin();
   garlandB.begin();
   wifiManager.begin();
-  authMiddleware.begin();
-  mqttManager.begin();
+  // Запуск MQTT
+  MqttHelper::setup(mqttManager, garlandA, garlandB);
+  
   server.addMiddleware(&authMiddleware);
   pages.initPagesHandlers(server);
   ElegantOTA.begin(&server);
