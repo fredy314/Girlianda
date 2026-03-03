@@ -1,3 +1,9 @@
+/*
+ * Girlianda project
+ * Copyright (c) 2026 Fredy
+ * This software is released under the MIT License.
+ * See the LICENSE file in the project root for full license information.
+ */
 #ifndef MQTT_HELPER_H
 #define MQTT_HELPER_H
 

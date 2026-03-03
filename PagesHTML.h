@@ -1,3 +1,9 @@
+/*
+ * Girlianda project
+ * Copyright (c) 2026 Fredy
+ * This software is released under the MIT License.
+ * See the LICENSE file in the project root for full license information.
+ */
 #ifndef PAGES_HTML_H
 #define PAGES_HTML_H
 
