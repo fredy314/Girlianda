@@ -30,8 +30,8 @@ Garland garlandA(pinA1, pinA2, 0, 1, 0, "garlandA");  // Канали 0,1, Та�
 Garland garlandB(pinB1, pinB2, 2, 3, 1, "garlandB");  // Канали 2,3, Таймер 1
 AsyncWebServer server(80);
 PagesHandlers pages(garlandA, garlandB);
-AuthenticationMiddleware authMiddleware;
 WiFiManager wifiManager;
+AuthenticationMiddleware authMiddleware;
 ESPWebMqttManager mqttManager("girlianda", "Гірлянда");
 
 void setup() {
@@ -43,6 +43,7 @@ void setup() {
   garlandA.begin();
   garlandB.begin();
   wifiManager.begin();
+  authMiddleware.begin();
   // Запуск MQTT
   MqttHelper::setup(mqttManager, garlandA, garlandB);
   
