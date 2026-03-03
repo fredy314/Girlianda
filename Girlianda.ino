@@ -14,10 +14,10 @@
 #include "MqttHelper.h"
 
 // Pins
-const int pinA1 = 10; 
-const int pinA2 = 7;
-const int pinB1 = 6;
-const int pinB2 = 5;
+const int pinA1 = 0; 
+const int pinA2 = 1;
+const int pinB1 = 3;
+const int pinB2 = 4;
 
 // Globals
 Garland garlandA(pinA1, pinA2, 0, 1, 0, "garlandA");  // Канали 0,1, Таймер 0
